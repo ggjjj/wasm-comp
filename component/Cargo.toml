@@ -1,0 +1,14 @@
+[package]
+name = "component"  # Change this to your desired crate name
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"           # Add any necessary dependencies
+wasmtime = "25.0.2"       # Specify the correct version for your use case
+wit-component = "0.219.1"
+wasmtime-wasi = "25.0.2"
+
+[[bin]]
+name = "component"       # The name for the binary
+path = "main.rs"         # Path to your main.rs file

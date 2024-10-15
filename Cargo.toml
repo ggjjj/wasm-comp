@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "component/wasm",  # Include your component paths here
+    "component"
+]
+resolver = "2"
+
+[workspace.dependencies]
+wit-bindgen = { version = "0.32", default-features = true } # Specify the version you need

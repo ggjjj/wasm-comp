@@ -1,0 +1,11 @@
+[package]
+name = "map"
+publish = false
+
+[dependencies]
+wit-bindgen = { workspace = true, default-features = true }
+
+[lib]
+path = "map.rs"
+name = "map"
+crate-type = ["cdylib"]
