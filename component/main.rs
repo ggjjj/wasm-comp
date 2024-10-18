@@ -2,6 +2,8 @@
 // use wasmtime_wasi::bindings::cli::exit::add_to_linker;
 // use std::{fs, path::Path};
 
+use std::{sync::{Arc, Mutex}, thread};
+
 use wasmtime::{
     component::{bindgen, Component, Linker},
     Config, Engine, Result, Store,
@@ -12,6 +14,7 @@ use wasmtime_wasi::WasiCtxBuilder;
 // Generate bindings of the guest and host components.
 bindgen!("convert" in "./convert.wit");
 
+#[derive(Clone)]
 struct HostComponent;
 
 // Implementation of the host interface defined in the wit file.
@@ -51,40 +54,137 @@ impl wasmtime_wasi::WasiView for MyState {
 //         .encode()
 // }
 
-fn main() -> Result<()> {
-    // Create an engine with the component model enabled (disabled by default).
-    // let engine = Engine::new(Config::new().wasm_component_model(true))?;
-    let mut engine_config = Config::new();
-    engine_config
-        .debug_info(true)
-        .wasm_component_model(true);
+/// main function with the component model enabled and no threading
+// fn main() -> Result<()> {
+//     // Create an engine with the component model enabled (disabled by default).
+//     // let engine = Engine::new(Config::new().wasm_component_model(true))?;
+//     let mut engine_config = Config::new();
+//     engine_config
+//         .debug_info(true)
+//         .wasm_component_model(true);
 
-    let engine = Engine::new(&engine_config)?;
-    let wasi_ctx = WasiCtxBuilder::new().build();
+//     let engine = Engine::new(&engine_config)?;
+//     let wasi_ctx = WasiCtxBuilder::new().build();
+//     // Create our component and call our generated host function.
+//     let module = Component::from_file(&engine, "/workspaces/wasm-comp/target/wasm32-wasip1/debug/map-comp.wasm").unwrap();
+//     let mut store = Store::new(
+//         &engine,
+//         MyState {
+//             host: HostComponent,
+//             wasi_ctx,
+//             resource_table: wasmtime_wasi::ResourceTable::default(),
+//     });
 
-    // NOTE: The wasm32-unknown-unknown target is used here for simplicity, real world use cases
-    // should probably use the wasm32-wasip1 target, and enable wasi preview2 within the component
-    // let component = convert_to_component("target/wasm32-unknown-unknown/debug/guest.wasm")?;
-    // let component = convert_to_component("target/wasm32-wasip1/debug/map.wasm")?;
-
-    // Create our component and call our generated host function.
-    let module = Component::from_file(&engine, "/workspaces/wasm-comp/target/wasm32-wasip1/debug/map-comp.wasm").unwrap();
-    // let component = Component::from_binary(&engine, &component)?;
-    let mut store = Store::new(
-        &engine,
-        MyState {
-            host: HostComponent,
-            wasi_ctx,
-            resource_table: wasmtime_wasi::ResourceTable::default(),
-    });
-
-    let mut linker: Linker<MyState> = Linker::new(&engine);
-    host::add_to_linker(&mut linker, |state: &mut MyState| &mut state.host)?;
-    wasmtime_wasi::add_to_linker_sync(&mut linker).unwrap();
+//     let mut linker: Linker<MyState> = Linker::new(&engine);
+//     host::add_to_linker(&mut linker, |state: &mut MyState| &mut state.host)?;
+//     wasmtime_wasi::add_to_linker_sync(&mut linker).unwrap();
     
-    let convert = Convert::instantiate(&mut store, &module, &linker)?;
-    //let module_instance = linker.instantiate(&mut store, &module)?;
-    let result = convert.call_convert_celsius_to_fahrenheit(&mut store, 23.4)?;
-    println!("Converted to: {result:?}");
+//     let convert = Convert::instantiate(&mut store, &module, &linker)?;
+//     let result = convert.call_convert_celsius_to_fahrenheit(&mut store, 23.4)?;
+//     println!("Converted to: {result:?}");
+//     Ok(())
+// }
+
+
+/// main function with the component model enabled and single threading
+// fn main() -> Result<()> {
+//     // Create an engine with the component model enabled and debug info enabled (disabled by default).
+//     let mut engine_config = Config::new();
+//     engine_config
+//         .debug_info(true)
+//         .wasm_component_model(true);
+
+//     let engine = Engine::new(&engine_config).unwrap();
+//     let wasi_ctx = WasiCtxBuilder::new().build();
+//     // Create our component and call our generated host function.
+//     let module = Component::from_file(&engine, "/workspaces/wasm-comp/target/wasm32-wasip1/debug/map-comp.wasm").unwrap();
+
+//     let store = Arc::new(Mutex::new(Store::new(
+//         &engine,
+//         MyState {
+//             host: HostComponent,
+//             wasi_ctx,
+//             resource_table: wasmtime_wasi::ResourceTable::default(),
+//         },
+//     )));
+    
+//     let handle = {
+//         let store = Arc::clone(&store);
+//         thread::spawn(move || {
+//             // Lock the store to access it safely.
+//             let mut store = store.lock().unwrap();
+//             let mut linker: Linker<MyState> = Linker::new(store.engine());
+//             host::add_to_linker(&mut linker, |state: &mut MyState| &mut state.host).unwrap();
+//             wasmtime_wasi::add_to_linker_sync(&mut linker).unwrap();
+
+
+//             // Instantiate the component.
+//             let convert = Convert::instantiate(&mut *store, &module, &linker).unwrap();
+//             let result = convert.call_convert_celsius_to_fahrenheit(&mut *store, 23.4).unwrap();
+//             println!("Converted to: {result:?}");
+//         })
+
+//     };
+//     // Wait for the thread to finish.
+//     handle.join().unwrap();
+//     Ok(())
+// }
+
+/// main function with the component model enabled and multi-threading
+fn main() -> Result<()> {
+    // Create an Arc to hold shared resources.
+    let _shared_resources = Arc::new(Mutex::new(()));
+    
+    let handle = {
+        // First thread to set up engine, WASI context, and module.
+        thread::spawn(move || {
+            let mut engine_config = Config::new();
+            engine_config
+                .debug_info(true)
+                .wasm_component_model(true);
+
+            let engine = Engine::new(&engine_config).unwrap();
+            let wasi_ctx = WasiCtxBuilder::new().build();
+            let module = Component::from_file(&engine, "/workspaces/wasm-comp/target/wasm32-wasip1/debug/map-comp.wasm").unwrap();
+
+            // Lock and share the store setup with the second thread.
+            let store = Store::new(
+                &engine,
+                MyState {
+                    host: HostComponent,
+                    wasi_ctx,
+                    resource_table: wasmtime_wasi::ResourceTable::default(),
+                },
+            );
+
+            // Return engine and module as well, for the second thread
+            (engine, module, store)
+        })
+    };
+
+    // Now in the main thread, wait for the first thread to finish and get the store
+    let (engine, module, store) = handle.join().unwrap();
+
+    // Second thread to perform linking and instantiation.
+    let store = Arc::new(Mutex::new(store));
+
+    let handle = {
+        let store = Arc::clone(&store);
+        thread::spawn(move || {
+            let mut linker: Linker<MyState> = Linker::new(&engine);
+            host::add_to_linker(&mut linker, |state: &mut MyState| &mut state.host).unwrap();
+            wasmtime_wasi::add_to_linker_sync(&mut linker).unwrap();
+
+            // Lock the store to access it safely.
+            let mut store = store.lock().unwrap();
+            // Instantiate the component.
+            let convert = Convert::instantiate(&mut *store, &module, &linker).unwrap();
+            let result = convert.call_convert_celsius_to_fahrenheit(&mut *store, 23.4).unwrap();
+            println!("Converted to: {result:?}");
+        })
+    };
+
+    // Wait for the second thread to finish.
+    handle.join().unwrap();
     Ok(())
 }
